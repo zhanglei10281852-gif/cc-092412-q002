@@ -4,6 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from app.core.clock import Clock, SystemClock, to_storage
+from app.core.security import Principal
 from app.repositories.audit import AuditRepository
 
 
@@ -12,6 +13,20 @@ class AuditContext:
     actor_user_id: int | None
     actor_name: str
     correlation_id: str | None = None
+    on_behalf_of_user_id: int | None = None
+    on_behalf_of_name: str | None = None
+    delegation_id: int | None = None
+
+    @classmethod
+    def from_principal(cls, principal: Principal) -> "AuditContext":
+        delegation = principal.delegation
+        return cls(
+            actor_user_id=principal.user_id,
+            actor_name=principal.display_name,
+            on_behalf_of_user_id=delegation.granter_user_id if delegation else None,
+            on_behalf_of_name=delegation.granter_name if delegation else None,
+            delegation_id=delegation.delegation_id if delegation else None,
+        )
 
 
 class AuditService:
@@ -42,5 +57,8 @@ class AuditService:
             after=after,
             metadata=metadata,
             correlation_id=context.correlation_id,
+            on_behalf_of_user_id=context.on_behalf_of_user_id,
+            on_behalf_of_name=context.on_behalf_of_name,
+            delegation_id=context.delegation_id,
             created_at=to_storage(self.clock.now()),
         )

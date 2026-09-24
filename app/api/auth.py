@@ -30,6 +30,16 @@ def login(data: LoginRequest) -> dict:
 
 @router.get("/me")
 def me(principal: Principal = Depends(current_principal)) -> dict:
+    delegation = None
+    if principal.delegation is not None:
+        delegation = {
+            "delegation_id": principal.delegation.delegation_id,
+            "granter_user_id": principal.delegation.granter_user_id,
+            "granter_name": principal.delegation.granter_name,
+            "permissions": sorted(principal.delegation.permissions),
+            "department_ids": sorted(principal.delegation.department_ids),
+            "all_departments": principal.delegation.all_departments,
+        }
     return {
         "user_id": principal.user_id,
         "username": principal.username,
@@ -37,6 +47,7 @@ def me(principal: Principal = Depends(current_principal)) -> dict:
         "department_id": principal.department_id,
         "permissions": sorted(principal.permissions),
         "session_id": principal.session_id,
+        "delegation": delegation,
     }
 
 

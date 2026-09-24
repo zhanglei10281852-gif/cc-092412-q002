@@ -97,10 +97,17 @@ class PetitionRepository(Repository):
         deadline_before: str | None,
         limit: int,
         offset: int,
+        department_ids: list[int] | None = None,
     ) -> list[dict]:
         conditions: list[str] = []
         params: list[Any] = []
-        if department_id is not None:
+        if department_ids is not None:
+            if not department_ids:
+                return []
+            placeholders = ",".join("?" for _ in department_ids)
+            conditions.append(f"p.department_id IN ({placeholders})")
+            params.extend(department_ids)
+        elif department_id is not None:
             conditions.append("p.department_id=?")
             params.append(department_id)
         if statuses:

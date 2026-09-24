@@ -82,8 +82,35 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_seen_at TEXT NOT NULL,
     revoked_at TEXT,
     revoke_reason TEXT,
-    client_label TEXT NOT NULL DEFAULT ''
+    client_label TEXT NOT NULL DEFAULT '',
+    active_delegation_id INTEGER REFERENCES delegations(id)
 );
+
+CREATE TABLE IF NOT EXISTS delegations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    granter_user_id INTEGER NOT NULL REFERENCES users(id),
+    agent_user_id INTEGER NOT NULL REFERENCES users(id),
+    permission_codes_json TEXT NOT NULL DEFAULT '[]',
+    department_ids_json TEXT NOT NULL DEFAULT '[]',
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','revoked','terminated')),
+    starts_at TEXT NOT NULL,
+    ends_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    created_by_user_id INTEGER REFERENCES users(id),
+    revoked_at TEXT,
+    revoked_by_user_id INTEGER REFERENCES users(id),
+    revoke_reason TEXT,
+    terminate_reason TEXT,
+    CHECK(ends_at > starts_at),
+    CHECK(agent_user_id <> granter_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_delegations_agent ON delegations(agent_user_id, status);
+CREATE INDEX IF NOT EXISTS idx_delegations_granter ON delegations(granter_user_id, status);
+CREATE INDEX IF NOT EXISTS idx_delegations_window ON delegations(starts_at, ends_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_delegations_window_pair
+ON delegations(granter_user_id, agent_user_id, starts_at, ends_at);
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,6 +124,9 @@ CREATE TABLE IF NOT EXISTS audit_events (
     after_json TEXT,
     metadata_json TEXT NOT NULL DEFAULT '{}',
     correlation_id TEXT,
+    on_behalf_of_user_id INTEGER REFERENCES users(id),
+    on_behalf_of_name TEXT,
+    delegation_id INTEGER REFERENCES delegations(id),
     created_at TEXT NOT NULL
 );
 
@@ -232,6 +262,8 @@ PERMISSIONS = [
     ("petitions.write", "办理信访", "petitions", "write"),
     ("announcements.write", "维护公告", "announcements", "write"),
     ("audit.read", "查看审计", "audit", "read"),
+    ("delegations.read", "查看代理授权", "delegations", "read"),
+    ("delegations.write", "维护代理授权", "delegations", "write"),
     ("jobs.run", "执行后台任务", "jobs", "run"),
 ]
 
@@ -281,10 +313,30 @@ def transaction(*, immediate: bool = False) -> Iterator[sqlite3.Connection]:
         connection.commit()
 
 
+def _columns(connection: sqlite3.Connection, table: str) -> set[str]:
+    return {row[1] for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+def _add_missing_columns(connection: sqlite3.Connection) -> None:
+    session_columns = _columns(connection, "sessions")
+    if "active_delegation_id" not in session_columns:
+        connection.execute("ALTER TABLE sessions ADD COLUMN active_delegation_id INTEGER REFERENCES delegations(id)")
+    audit_columns = _columns(connection, "audit_events")
+    if "on_behalf_of_user_id" not in audit_columns:
+        connection.execute("ALTER TABLE audit_events ADD COLUMN on_behalf_of_user_id INTEGER REFERENCES users(id)")
+    if "on_behalf_of_name" not in audit_columns:
+        connection.execute("ALTER TABLE audit_events ADD COLUMN on_behalf_of_name TEXT")
+    if "delegation_id" not in audit_columns:
+        connection.execute("ALTER TABLE audit_events ADD COLUMN delegation_id INTEGER REFERENCES delegations(id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_delegation ON audit_events(delegation_id)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_on_behalf ON audit_events(on_behalf_of_user_id)")
+
+
 def init_db() -> None:
     now = to_storage(utc_now())
     with transaction(immediate=True) as connection:
         connection.executescript(SCHEMA)
+        _add_missing_columns(connection)
         for code, name, resource, action in PERMISSIONS:
             connection.execute(
                 "INSERT OR IGNORE INTO permissions(code,name,resource,action) VALUES(?,?,?,?)",

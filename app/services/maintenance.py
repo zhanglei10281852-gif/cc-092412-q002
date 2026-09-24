@@ -35,6 +35,7 @@ class MaintenanceService:
         "permissions",
         "role_permissions",
         "user_roles",
+        "delegations",
         "residents",
         "affairs",
         "announcements",

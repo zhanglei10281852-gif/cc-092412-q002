@@ -8,6 +8,7 @@ from app.core.security import Principal
 from app.repositories.business import DepartmentRepository
 from app.repositories.identity import UserRepository
 from app.services.audit import AuditContext, AuditService
+from app.services.delegation import DelegationService
 
 
 class DepartmentService:
@@ -30,7 +31,7 @@ class DepartmentService:
         )
         created = self.departments.require(int(cursor.lastrowid))
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.create",
             resource_type="department",
             resource_id=created["id"],
@@ -54,8 +55,10 @@ class DepartmentService:
             (*allowed.values(), to_storage(self.clock.now()), department_id),
         )
         after = self.departments.require(department_id)
+        if before.get("is_active") == 1 and allowed.get("is_active") == 0:
+            DelegationService(self.connection, self.clock).terminate_for_disabled_department(department_id, "department_disabled")
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.update",
             resource_type="department",
             resource_id=department_id,
@@ -96,7 +99,7 @@ class DepartmentService:
         membership = self.departments.membership(int(cursor.lastrowid))
         assert membership is not None
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.membership.create",
             resource_type="department_membership",
             resource_id=membership["id"],
@@ -117,10 +120,13 @@ class DepartmentService:
         self.connection.execute("UPDATE department_memberships SET ends_at=?,is_primary=0 WHERE id=?", (to_storage(end), membership_id))
         if membership["is_primary"]:
             self.connection.execute("UPDATE users SET department_id=NULL,updated_at=? WHERE id=? AND department_id=?", (to_storage(self.clock.now()), membership["user_id"], membership["department_id"]))
+        DelegationService(self.connection, self.clock).terminate_for_lost_department(
+            membership["user_id"], membership["department_id"], "membership_ended"
+        )
         after = self.departments.membership(membership_id)
         assert after is not None
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.membership.end",
             resource_type="department_membership",
             resource_id=membership_id,

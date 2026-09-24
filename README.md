@@ -9,6 +9,7 @@
 - 信访流转：签收、分派、办理、审核、复查、催办和流转记录。
 - 公告与部门：公告置顶、分类检索、部门信息及关联业务查看。
 - 身份与权限：用户、角色、细粒度权限、会话令牌、账号停用和会话撤销。
+- 临时代理授权：负责人请假期间向指定人员授予有生效时间、截止时间与部门业务范围的代理权限，支持会话内上岗/离岗、提前撤销、到期自动失效、账号停用与部门任期结束联动收回，并在审计中同时记录实际操作者与被代理岗位。
 - 审计记录：关键身份操作留痕，并对口令和令牌等敏感字段做过滤。
 - 后台任务：使用 SQLite 保存待执行任务，支持去重、租约、重试和完成回执。
 
@@ -54,6 +55,14 @@ curl -sS -X POST http://127.0.0.1:8432/api/auth/bootstrap   -H 'Content-Type: ap
 ```
 
 之后通过 `/api/auth/login` 获取会话令牌，并在管理接口请求头中使用 `Authorization: Bearer <token>`。
+
+### 临时代理授权
+
+管理人员（需要 `delegations.write` 权限）通过 `POST /api/delegations` 创建授权，指定授权人、代理人、权限码子集、业务部门范围、生效与截止时间。代理权限必须是授权人本人角色直接拥有的权限，用户/角色/授权管理类权限不得转授；同一授权人/代理人之间时间重叠的有效授权会被拒绝，重复提交返回 409。
+
+代理人通过 `/api/delegations/mine/available` 查看当前可用授权，调用 `POST /api/delegations/mine/activate/{id}` 在本会话内"上岗"，`POST /api/delegations/mine/deactivate` 离岗。代理期间每次请求都会实时重验授权状态：提前撤销、到期、任一方账号停用、授权人角色权限被收回或部门任期结束，都会立即解除会话上的代理权限，服务重启后状态一致，不产生重叠或幽灵授权。
+
+代理期间的审计事件同时记录实际操作者（`actor_user_id`/`actor_name`）与被代理岗位（`on_behalf_of_user_id`/`on_behalf_of_name`）以及授权编号（`delegation_id`）。通过 `GET /api/audit?on_behalf_of_user_id=...&created_from=...&created_to=...` 可追溯某个时间点谁代表谁办理了哪些业务；`GET /api/delegations?active_at=<ISO时间>` 可查询任意时间点有效的授权。
 
 ## 测试
 

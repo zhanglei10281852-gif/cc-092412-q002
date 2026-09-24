@@ -75,6 +75,16 @@ def request_fingerprint(payload: dict[str, Any]) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class DelegationContext:
+    delegation_id: int
+    granter_user_id: int
+    granter_name: str
+    permissions: frozenset[str]
+    department_ids: frozenset[int]
+    all_departments: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class Principal:
     user_id: int
     username: str
@@ -82,12 +92,31 @@ class Principal:
     department_id: int | None
     permissions: frozenset[str]
     session_id: int
+    delegation: DelegationContext | None = None
+    own_permissions: frozenset[str] = frozenset()
+    is_administrator: bool = False
 
     def can(self, permission: str) -> bool:
-        return "*" in self.permissions or permission in self.permissions
+        return self.is_administrator or "*" in self.permissions or permission in self.permissions
 
     def require(self, permission: str) -> None:
         from app.core.errors import PermissionDeniedError
 
         if not self.can(permission):
             raise PermissionDeniedError(f"缺少权限：{permission}")
+
+    def permission_via_delegation(self, permission: str) -> bool:
+        """该权限是否仅通过代理获得（非自有）。"""
+        if self.is_administrator or "*" in self.own_permissions:
+            return False
+        return permission not in self.own_permissions and self.delegation is not None and permission in self.delegation.permissions
+
+    @property
+    def is_delegating(self) -> bool:
+        return self.delegation is not None
+
+    @property
+    def actor_label(self) -> str:
+        if self.delegation is None:
+            return self.display_name
+        return f"{self.display_name}（代理 {self.delegation.granter_name}）"

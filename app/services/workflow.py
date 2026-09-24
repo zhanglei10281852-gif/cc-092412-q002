@@ -82,7 +82,7 @@ class PetitionWorkflowService:
         after = self.petitions.detail(petition_id)
         assert after is not None
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="petition.transition",
             resource_type="petition",
             resource_id=petition_id,

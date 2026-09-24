@@ -9,6 +9,7 @@ from app.core.errors import AccountLockedError, AuthenticationError, ConflictErr
 from app.core.security import Principal, generate_token, hash_password, normalize_username, token_digest, verify_password
 from app.repositories.identity import SessionRepository, UserRepository
 from app.services.audit import AuditContext, AuditService
+from app.services.delegation import DelegationService
 
 
 class AuthService:
@@ -113,13 +114,22 @@ class AuthService:
         if user["status"] != "active":
             raise AuthenticationError("账号不可用")
         self.connection.execute("UPDATE sessions SET last_seen_at=? WHERE id=?", (to_storage(now), session["id"]))
+        own_permissions = frozenset(self.users.permissions(user["id"]))
+        is_administrator = "administrator" in self.users.role_codes(user["id"])
+        delegation_context = DelegationService(self.connection, self.clock).session_context(session["id"])
+        effective_permissions = own_permissions
+        if delegation_context is not None:
+            effective_permissions = own_permissions | delegation_context.permissions
         return Principal(
             user_id=user["id"],
             username=user["username"],
             display_name=user["display_name"],
             department_id=user["department_id"],
-            permissions=frozenset(self.users.permissions(user["id"])),
+            permissions=effective_permissions,
             session_id=session["id"],
+            delegation=delegation_context,
+            own_permissions=own_permissions,
+            is_administrator=is_administrator,
         )
 
     def logout(self, principal: Principal) -> None:
@@ -129,7 +139,7 @@ class AuthService:
             (now, principal.session_id),
         )
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="auth.logout",
             resource_type="session",
             resource_id=principal.session_id,

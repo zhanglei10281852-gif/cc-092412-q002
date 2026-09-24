@@ -45,6 +45,13 @@ class UserRepository(Repository):
             "WHERE ur.user_id=? ORDER BY r.code", (user_id,)
         ).fetchall())
 
+    def role_codes(self, user_id: int) -> set[str]:
+        rows = self.connection.execute(
+            "SELECT r.code FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=?",
+            (user_id,),
+        ).fetchall()
+        return {str(row[0]) for row in rows}
+
 
 class RoleRepository(Repository):
     table = "roles"

@@ -22,7 +22,15 @@ def list_petitions(
     principal: Principal = Depends(current_principal),
 ) -> dict:
     scope = DataScope.from_principal(principal, "petitions.read")
-    effective_department = scope.restrict_department(department_id)
+    if scope.mode == "all":
+        effective_department = department_id
+        department_ids = None
+    elif scope.mode == "departments":
+        effective_department = scope.restrict_department(department_id) if department_id is not None else None
+        department_ids = None if department_id is not None else sorted(scope.department_ids or frozenset())
+    else:
+        effective_department = scope.restrict_department(department_id)
+        department_ids = None
     repository = PetitionRepository(get_connection())
     rows = repository.list_for_scope(
         department_id=effective_department,
@@ -30,6 +38,7 @@ def list_petitions(
         deadline_before=None,
         limit=size,
         offset=(page - 1) * size,
+        department_ids=department_ids,
     )
     return {"page": page, "size": size, "data": rows}
 

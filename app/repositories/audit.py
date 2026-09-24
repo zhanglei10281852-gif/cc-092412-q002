@@ -36,10 +36,14 @@ class AuditRepository:
         metadata: dict | None,
         correlation_id: str | None,
         created_at: str,
+        on_behalf_of_user_id: int | None = None,
+        on_behalf_of_name: str | None = None,
+        delegation_id: int | None = None,
     ) -> int:
         cursor = self.connection.execute(
             "INSERT INTO audit_events(actor_user_id,actor_name,action,resource_type,resource_id,outcome,"
-            "before_json,after_json,metadata_json,correlation_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "before_json,after_json,metadata_json,correlation_id,on_behalf_of_user_id,on_behalf_of_name,"
+            "delegation_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (
                 actor_user_id,
                 actor_name,
@@ -51,6 +55,9 @@ class AuditRepository:
                 json.dumps(redact(after), ensure_ascii=False, sort_keys=True) if after is not None else None,
                 json.dumps(redact(metadata or {}), ensure_ascii=False, sort_keys=True),
                 correlation_id,
+                on_behalf_of_user_id,
+                on_behalf_of_name,
+                delegation_id,
                 created_at,
             ),
         )
@@ -65,6 +72,10 @@ class AuditRepository:
         outcome: str | None,
         limit: int,
         offset: int,
+        on_behalf_of_user_id: int | None = None,
+        delegation_id: int | None = None,
+        created_from: str | None = None,
+        created_to: str | None = None,
     ) -> list[dict]:
         conditions: list[str] = []
         params: list[Any] = []
@@ -73,10 +84,18 @@ class AuditRepository:
             ("resource_type", resource_type),
             ("action", action),
             ("outcome", outcome),
+            ("on_behalf_of_user_id", on_behalf_of_user_id),
+            ("delegation_id", delegation_id),
         ):
             if value is not None:
                 conditions.append(f"{column}=?")
                 params.append(value)
+        if created_from is not None:
+            conditions.append("created_at>=?")
+            params.append(created_from)
+        if created_to is not None:
+            conditions.append("created_at<=?")
+            params.append(created_to)
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         params.extend([limit, offset])
         return rows_dict(self.connection.execute(

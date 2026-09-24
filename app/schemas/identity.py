@@ -71,3 +71,31 @@ class DepartmentMembershipCreate(BaseModel):
     is_primary: bool = False
     starts_at: str
     ends_at: str | None = None
+
+
+class DelegationCreate(BaseModel):
+    granter_user_id: int
+    agent_user_id: int
+    permission_codes: list[str] = Field(min_length=1, max_length=50)
+    department_ids: list[int] = Field(default_factory=list, max_length=50)
+    reason: str = Field(default="", max_length=500)
+    starts_at: str
+    ends_at: str
+
+    @field_validator("permission_codes")
+    @classmethod
+    def unique_permissions(cls, value: list[str]) -> list[str]:
+        if len(set(value)) != len(value):
+            raise ValueError("代理权限不能重复")
+        return value
+
+    @field_validator("department_ids")
+    @classmethod
+    def unique_departments(cls, value: list[int]) -> list[int]:
+        if len(set(value)) != len(value):
+            raise ValueError("业务部门不能重复")
+        return value
+
+
+class DelegationRevokeRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
