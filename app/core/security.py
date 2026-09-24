@@ -75,6 +75,19 @@ def request_fingerprint(payload: dict[str, Any]) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class ActiveDelegation:
+    """当前请求时刻对代理人有效的一条临时代理授权。"""
+
+    grant_id: int
+    grantor_user_id: int
+    grantor_name: str
+    department_id: int | None
+    permission_codes: frozenset[str]
+    starts_at: str
+    ends_at: str
+
+
+@dataclass(frozen=True, slots=True)
 class Principal:
     user_id: int
     username: str
@@ -82,6 +95,7 @@ class Principal:
     department_id: int | None
     permissions: frozenset[str]
     session_id: int
+    delegations: tuple[ActiveDelegation, ...] = ()
 
     def can(self, permission: str) -> bool:
         return "*" in self.permissions or permission in self.permissions

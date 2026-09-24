@@ -42,6 +42,7 @@ class MaintenanceService:
         "petition_urges",
         "petition_flow_records",
         "department_memberships",
+        "delegation_grants",
         "audit_events",
         "background_jobs",
     )

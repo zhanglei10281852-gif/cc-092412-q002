@@ -198,6 +198,27 @@ CREATE TABLE IF NOT EXISTS department_memberships (
     UNIQUE(user_id, department_id, starts_at)
 );
 
+CREATE TABLE IF NOT EXISTS delegation_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grantor_user_id INTEGER NOT NULL REFERENCES users(id),
+    delegate_user_id INTEGER NOT NULL REFERENCES users(id),
+    department_id INTEGER REFERENCES departments(id),
+    permission_codes_json TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','revoked')),
+    starts_at TEXT NOT NULL,
+    ends_at TEXT NOT NULL,
+    revoked_at TEXT,
+    revoked_by INTEGER REFERENCES users(id),
+    revoke_reason TEXT,
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_delegation_delegate ON delegation_grants(delegate_user_id, status, starts_at, ends_at);
+CREATE INDEX IF NOT EXISTS idx_delegation_grantor ON delegation_grants(grantor_user_id, status);
+
 CREATE TABLE IF NOT EXISTS background_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     job_type TEXT NOT NULL,
@@ -233,6 +254,8 @@ PERMISSIONS = [
     ("announcements.write", "维护公告", "announcements", "write"),
     ("audit.read", "查看审计", "audit", "read"),
     ("jobs.run", "执行后台任务", "jobs", "run"),
+    ("delegations.read", "查看代理授权", "delegations", "read"),
+    ("delegations.write", "维护代理授权", "delegations", "write"),
 ]
 
 

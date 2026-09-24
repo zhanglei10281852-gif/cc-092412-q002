@@ -30,7 +30,7 @@ class DepartmentService:
         )
         created = self.departments.require(int(cursor.lastrowid))
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.create",
             resource_type="department",
             resource_id=created["id"],
@@ -55,7 +55,7 @@ class DepartmentService:
         )
         after = self.departments.require(department_id)
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.update",
             resource_type="department",
             resource_id=department_id,
@@ -96,7 +96,7 @@ class DepartmentService:
         membership = self.departments.membership(int(cursor.lastrowid))
         assert membership is not None
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.membership.create",
             resource_type="department_membership",
             resource_id=membership["id"],
@@ -120,7 +120,7 @@ class DepartmentService:
         after = self.departments.membership(membership_id)
         assert after is not None
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="department.membership.end",
             resource_type="department_membership",
             resource_id=membership_id,

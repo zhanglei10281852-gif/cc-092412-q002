@@ -71,3 +71,27 @@ class DepartmentMembershipCreate(BaseModel):
     is_primary: bool = False
     starts_at: str
     ends_at: str | None = None
+
+
+class DelegationCreate(BaseModel):
+    delegate_user_id: int
+    grantor_user_id: int | None = None
+    permission_codes: list[str] = Field(min_length=1, max_length=50)
+    department_id: int | None = None
+    starts_at: str
+    ends_at: str
+    reason: str = Field(default="", max_length=500)
+
+    @field_validator("permission_codes")
+    @classmethod
+    def unique_permissions(cls, value: list[str]) -> list[str]:
+        cleaned = [code.strip() for code in value]
+        if any(not code for code in cleaned):
+            raise ValueError("权限编码不能为空")
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("权限不能重复")
+        return cleaned
+
+
+class DelegationRevokeRequest(BaseModel):
+    reason: str = Field(default="", max_length=500)

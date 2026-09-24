@@ -9,6 +9,7 @@ from app.core.errors import AccountLockedError, AuthenticationError, ConflictErr
 from app.core.security import Principal, generate_token, hash_password, normalize_username, token_digest, verify_password
 from app.repositories.identity import SessionRepository, UserRepository
 from app.services.audit import AuditContext, AuditService
+from app.services.delegation import DelegationService, delegated_permissions, delegation_contexts
 
 
 class AuthService:
@@ -18,6 +19,7 @@ class AuthService:
         self.users = UserRepository(connection)
         self.sessions = SessionRepository(connection)
         self.audit = AuditService(connection, self.clock)
+        self.delegations = DelegationService(connection, self.clock)
         self.failure_limit = int(os.getenv("TOWNSHIP_LOGIN_FAILURE_LIMIT", "5"))
         self.lock_minutes = int(os.getenv("TOWNSHIP_LOGIN_LOCK_MINUTES", "30"))
         self.session_minutes = int(os.getenv("TOWNSHIP_SESSION_TTL_MINUTES", "480"))
@@ -95,7 +97,9 @@ class AuthService:
             resource_id=cursor.lastrowid,
             metadata={"client_label": client_label},
         )
-        return token, {"expires_at": to_storage(expires_at), "user": user, "permissions": sorted(self.users.permissions(user["id"]))}
+        active_grants = self.delegations.active_grants_for(user["id"], now)
+        effective = set(self.users.permissions(user["id"])) | delegated_permissions(active_grants)
+        return token, {"expires_at": to_storage(expires_at), "user": user, "permissions": sorted(effective)}
 
     def principal(self, token: str) -> Principal:
         session = self.sessions.active_by_digest(token_digest(token))
@@ -113,13 +117,16 @@ class AuthService:
         if user["status"] != "active":
             raise AuthenticationError("账号不可用")
         self.connection.execute("UPDATE sessions SET last_seen_at=? WHERE id=?", (to_storage(now), session["id"]))
+        active_grants = self.delegations.active_grants_for(user["id"], now)
+        permissions = set(self.users.permissions(user["id"])) | delegated_permissions(active_grants)
         return Principal(
             user_id=user["id"],
             username=user["username"],
             display_name=user["display_name"],
             department_id=user["department_id"],
-            permissions=frozenset(self.users.permissions(user["id"])),
+            permissions=frozenset(permissions),
             session_id=session["id"],
+            delegations=delegation_contexts(active_grants),
         )
 
     def logout(self, principal: Principal) -> None:
@@ -129,7 +136,7 @@ class AuthService:
             (now, principal.session_id),
         )
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="auth.logout",
             resource_type="session",
             resource_id=principal.session_id,

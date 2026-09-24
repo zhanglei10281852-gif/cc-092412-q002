@@ -41,7 +41,7 @@ class IdentityService:
             )
         created = self.users.require(user_id)
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="user.create",
             resource_type="user",
             resource_id=user_id,
@@ -66,7 +66,7 @@ class IdentityService:
         if before["status"] == "active" and after["status"] != "active":
             self.sessions.revoke_user_sessions(user_id, to_storage(self.clock.now()), "user_status_changed")
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="user.update",
             resource_type="user",
             resource_id=user_id,
@@ -89,7 +89,7 @@ class IdentityService:
             )
         after = [role["code"] for role in roles]
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="user.roles.replace",
             resource_type="user",
             resource_id=user_id,
@@ -124,7 +124,7 @@ class IdentityService:
             )
         role = self.role_detail(role_id)
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="role.create",
             resource_type="role",
             resource_id=role_id,
@@ -153,7 +153,7 @@ class IdentityService:
                 )
         after = self.role_detail(role_id)
         self.audit.record(
-            AuditContext(principal.user_id, principal.display_name),
+            AuditContext.from_principal(principal),
             action="role.update",
             resource_type="role",
             resource_id=role_id,

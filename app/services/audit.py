@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.core.clock import Clock, SystemClock, to_storage
+from app.core.security import ActiveDelegation, Principal
 from app.repositories.audit import AuditRepository
 
 
@@ -12,6 +13,11 @@ class AuditContext:
     actor_user_id: int | None
     actor_name: str
     correlation_id: str | None = None
+    delegations: tuple[ActiveDelegation, ...] = field(default_factory=tuple)
+
+    @classmethod
+    def from_principal(cls, principal: Principal) -> "AuditContext":
+        return cls(principal.user_id, principal.display_name, delegations=principal.delegations)
 
 
 class AuditService:
@@ -31,6 +37,17 @@ class AuditService:
         after: dict | None = None,
         metadata: dict | None = None,
     ) -> int:
+        merged = dict(metadata or {})
+        if context.delegations:
+            merged["delegations"] = [
+                {
+                    "grant_id": delegation.grant_id,
+                    "grantor_user_id": delegation.grantor_user_id,
+                    "grantor_name": delegation.grantor_name,
+                    "department_id": delegation.department_id,
+                }
+                for delegation in context.delegations
+            ]
         return self.repository.append(
             actor_user_id=context.actor_user_id,
             actor_name=context.actor_name,
@@ -40,7 +57,7 @@ class AuditService:
             outcome=outcome,
             before=before,
             after=after,
-            metadata=metadata,
+            metadata=merged,
             correlation_id=context.correlation_id,
             created_at=to_storage(self.clock.now()),
         )
